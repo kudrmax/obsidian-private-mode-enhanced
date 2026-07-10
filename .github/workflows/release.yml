@@ -20,7 +20,7 @@ jobs:
             - name: Build plugin
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  PLUGIN_NAME: private-mode
+                  PLUGIN_NAME: private-mode-enhanced
               run: |
                   npm install
                   npm run build
