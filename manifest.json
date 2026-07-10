@@ -1,7 +1,7 @@
 {
 	"id": "private-mode-enhanced",
 	"name": "Private Mode Enhanced",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"minAppVersion": "1.6.0",
 	"description": "Simple #private mode",
 	"author": "markusmo3",

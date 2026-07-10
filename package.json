@@ -1,6 +1,6 @@
 {
     "name": "obsidian-private-mode-enhanced",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Simple #private mode for Obsidian (https://obsidian.md)",
     "main": "main.js",
     "scripts": {
