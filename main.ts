@@ -4,36 +4,49 @@
  * Licensed under the MIT License (http://opensource.org/licenses/MIT)
  */
 
-import {addIcon, Menu, Platform, Plugin, setIcon,} from "obsidian";
+import {addIcon, App, Menu, Platform, Plugin, PluginSettingTab, Setting, setIcon,} from "obsidian";
+import {cursorRevealExtension, WORDS_COUNT_ATTR} from "./cursor-reveal";
 
 enum Level {
     HidePrivate = "hide-private",
     RevealOnHover = "reveal-on-hover",
     RevealAll = "reveal-all",
+    HardWord = "hard-word",
+    HardChar = "hard-char",
+    HardWords = "hard-words",
 }
 
 enum CssClass {
     RevealAll = "private-mode-reveal-all",
     RevealOnHover = "private-mode-reveal-on-hover",
     UnprotectedScreenshare = "private-mode-unprotected-screenshare",
-    BlurLinksToo = "private-mode-blur-links-too"
+    BlurLinksToo = "private-mode-blur-links-too",
+    // должны совпадать с константами в cursor-reveal.ts
+    HardWord = "private-mode-hard-word",
+    HardChar = "private-mode-hard-char",
+    HardWords = "private-mode-hard-words",
 }
 
 interface PrivateModePluginSettings {
     currentScreenshareProtection: boolean;
     blurLinksToo: boolean;
+    currentLevel: Level;
+    blurEnabled: boolean;
+    hardWordsCount: number;
 }
 
-const DEFAULT_SETTINGS: Partial<PrivateModePluginSettings> = {
+const DEFAULT_SETTINGS: PrivateModePluginSettings = {
     currentScreenshareProtection:  true,
     blurLinksToo: true,
+    currentLevel: Level.RevealOnHover,
+    blurEnabled: true,
+    hardWordsCount: 3,
 };
 
 export default class PrivateModePlugin extends Plugin {
     statusBar: HTMLElement;
     statusBarSpan: HTMLSpanElement;
     settings: PrivateModePluginSettings;
-    currentLevel: Level = Level.RevealOnHover;
 
     async onload() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -48,9 +61,9 @@ export default class PrivateModePlugin extends Plugin {
                     item
                         .setTitle('Reveal all')
                         .setIcon('ph--eye')
-                        .setChecked(this.currentLevel == Level.RevealAll)
+                        .setChecked(this.settings.currentLevel == Level.RevealAll)
                         .onClick(() => {
-                            this.currentLevel = Level.RevealAll
+                            this.settings.currentLevel = Level.RevealAll
                             this.updateGlobalRevealStyle();
                         })
                 );
@@ -58,9 +71,9 @@ export default class PrivateModePlugin extends Plugin {
                     item
                         .setTitle('Reveal on hover')
                         .setIcon('ph--eye-hand')
-                        .setChecked(this.currentLevel == Level.RevealOnHover)
+                        .setChecked(this.settings.currentLevel == Level.RevealOnHover)
                         .onClick(() => {
-                            this.currentLevel = Level.RevealOnHover
+                            this.settings.currentLevel = Level.RevealOnHover
                             this.updateGlobalRevealStyle();
                         })
                 );
@@ -68,9 +81,9 @@ export default class PrivateModePlugin extends Plugin {
                     item
                         .setTitle('Reveal never')
                         .setIcon('ph--eye-closed')
-                        .setChecked(this.currentLevel == Level.HidePrivate)
+                        .setChecked(this.settings.currentLevel == Level.HidePrivate)
                         .onClick(() => {
-                            this.currentLevel = Level.HidePrivate
+                            this.settings.currentLevel = Level.HidePrivate
                             this.updateGlobalRevealStyle();
                         })
                 );
@@ -121,7 +134,7 @@ export default class PrivateModePlugin extends Plugin {
             id: "hide-private",
             name: "Hide #private",
             callback: () => {
-                this.currentLevel = Level.HidePrivate;
+                this.settings.currentLevel = Level.HidePrivate;
                 this.updateGlobalRevealStyle();
             },
         });
@@ -130,7 +143,7 @@ export default class PrivateModePlugin extends Plugin {
             id: "reveal-on-hover",
             name: "Reveal #private on hover",
             callback: () => {
-                this.currentLevel = Level.RevealOnHover;
+                this.settings.currentLevel = Level.RevealOnHover;
                 this.updateGlobalRevealStyle();
             },
         });
@@ -139,7 +152,34 @@ export default class PrivateModePlugin extends Plugin {
             id: "reveal-all",
             name: "Reveal #private always",
             callback: () => {
-                this.currentLevel = Level.RevealAll;
+                this.settings.currentLevel = Level.RevealAll;
+                this.updateGlobalRevealStyle();
+            },
+        });
+
+        this.addCommand({
+            id: "hard-word",
+            name: "Hard blur — reveal word at cursor",
+            callback: () => {
+                this.settings.currentLevel = Level.HardWord;
+                this.updateGlobalRevealStyle();
+            },
+        });
+
+        this.addCommand({
+            id: "hard-char",
+            name: "Hard blur — reveal last char at cursor",
+            callback: () => {
+                this.settings.currentLevel = Level.HardChar;
+                this.updateGlobalRevealStyle();
+            },
+        });
+
+        this.addCommand({
+            id: "hard-words",
+            name: "Hard blur — reveal last N words at cursor",
+            callback: () => {
+                this.settings.currentLevel = Level.HardWords;
                 this.updateGlobalRevealStyle();
             },
         });
@@ -154,6 +194,15 @@ export default class PrivateModePlugin extends Plugin {
         });
 
         this.addCommand({
+            id: "toggle-blur",
+            name: "Toggle blur on/off (keep mode)",
+            callback: () => {
+                this.settings.blurEnabled = !this.settings.blurEnabled;
+                this.updateGlobalRevealStyle();
+            },
+        });
+
+        this.addCommand({
             id: "toggle-screenshare-protection",
             name: "Toggle screenshare protection",
             callback: () => {
@@ -162,21 +211,33 @@ export default class PrivateModePlugin extends Plugin {
             },
         })
 
+        this.registerEditorExtension(cursorRevealExtension);
+        this.addSettingTab(new PrivateModeSettingTab(this.app, this));
+
         this.app.workspace.onLayoutReady(() => {
             this.updateGlobalRevealStyle();
         });
     }
 
     private cycleCurrentLevel() {
-        switch (this.currentLevel) {
-            case Level.HidePrivate:
-                this.currentLevel = Level.RevealOnHover;
+        switch (this.settings.currentLevel) {
+            case Level.RevealAll:
+                this.settings.currentLevel = Level.RevealOnHover;
                 break;
             case Level.RevealOnHover:
-                this.currentLevel = Level.RevealAll;
+                this.settings.currentLevel = Level.HidePrivate;
                 break;
-            case Level.RevealAll:
-                this.currentLevel = Level.HidePrivate;
+            case Level.HidePrivate:
+                this.settings.currentLevel = Level.HardWord;
+                break;
+            case Level.HardWord:
+                this.settings.currentLevel = Level.HardChar;
+                break;
+            case Level.HardChar:
+                this.settings.currentLevel = Level.HardWords;
+                break;
+            case Level.HardWords:
+                this.settings.currentLevel = Level.RevealAll;
                 break;
         }
     }
@@ -189,10 +250,20 @@ export default class PrivateModePlugin extends Plugin {
         this.saveSettings()
         this.removeAllClasses();
         this.setClassToDocumentBody();
+        this.refreshCursorRevealDecorations();
 
         if (Platform.isDesktopApp) {
             window.require("electron").remote.getCurrentWindow().setContentProtection(this.settings.currentScreenshareProtection)
         }
+    }
+
+    // ViewPlugin реагирует на CM-транзакции, а не на смену body-класса.
+    // Форсим пересбор декораций пустым dispatch во все markdown-редакторы.
+    refreshCursorRevealDecorations() {
+        this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+            const cm = (leaf.view as any)?.editor?.cm;
+            cm?.dispatch({});
+        });
     }
 
     removeAllClasses() {
@@ -200,7 +271,10 @@ export default class PrivateModePlugin extends Plugin {
             CssClass.RevealAll,
             CssClass.RevealOnHover,
             CssClass.UnprotectedScreenshare,
-            CssClass.BlurLinksToo
+            CssClass.BlurLinksToo,
+            CssClass.HardWord,
+            CssClass.HardChar,
+            CssClass.HardWords
         );
     }
 
@@ -211,7 +285,13 @@ export default class PrivateModePlugin extends Plugin {
         if (this.settings.blurLinksToo) {
             document.body.classList.add(CssClass.BlurLinksToo)
         }
-        switch (this.currentLevel) {
+        if (!this.settings.blurEnabled) {
+            // блюр выключен — показываем всё, сохранённый режим не теряется
+            document.body.classList.add(CssClass.RevealAll);
+            setIcon(this.statusBarSpan, "ph--eye")
+            return;
+        }
+        switch (this.settings.currentLevel) {
             case Level.HidePrivate:
                 setIcon(this.statusBarSpan, "ph--eye-closed")
                 break;
@@ -223,9 +303,47 @@ export default class PrivateModePlugin extends Plugin {
                 document.body.classList.add(CssClass.RevealAll);
                 setIcon(this.statusBarSpan, "ph--eye")
                 break;
+            case Level.HardWord:
+                document.body.classList.add(CssClass.HardWord);
+                setIcon(this.statusBarSpan, "ph--eye-closed")
+                break;
+            case Level.HardChar:
+                document.body.classList.add(CssClass.HardChar);
+                setIcon(this.statusBarSpan, "ph--eye-closed")
+                break;
+            case Level.HardWords:
+                document.body.classList.add(CssClass.HardWords);
+                document.body.dataset[WORDS_COUNT_ATTR] = String(this.settings.hardWordsCount);
+                setIcon(this.statusBarSpan, "ph--eye-closed")
+                break;
         }
     }
 
+}
+
+class PrivateModeSettingTab extends PluginSettingTab {
+    constructor(app: App, private plugin: PrivateModePlugin) {
+        super(app, plugin);
+    }
+
+    display(): void {
+        const {containerEl} = this;
+        containerEl.empty();
+        new Setting(containerEl)
+            .setName("Слов у каретки в режиме Hard words")
+            .setDesc("Сколько последних слов (заканчивая словом у каретки) остаётся чётким.")
+            .addSlider((s) =>
+                s
+                    .setLimits(1, 15, 1)
+                    .setValue(this.plugin.settings.hardWordsCount)
+                    .setDynamicTooltip()
+                    .onChange((v) => {
+                        this.plugin.settings.hardWordsCount = v;
+                        // saveSettings + обновит dataset + пересбор декораций
+                        this.plugin.updateGlobalRevealStyle();
+                    })
+            );
+    }
 }
 
 // https://icon-sets.iconify.design/ph/eye-closed/

@@ -1,0 +1,119 @@
+/*
+ * Private Mode plugin for Obsidian — hard blur cursor-reveal extension
+ * Licensed under the MIT License (http://opensource.org/licenses/MIT)
+ *
+ * В "жёстких" режимах (word / char) активная строка приватной заметки
+ * остаётся размытой целиком, кроме слова или последней буквы у каретки.
+ *
+ * Расширение НЕ знает, приватна ли заметка: оно лишь размечает куски
+ * активной строки классом `private-mode-cursor-blur`. Решение "блюрить или
+ * нет" принимает CSS тем же селектором `:has(.is-active [data-link-tags*='#private'])`,
+ * что и весь остальной плагин. Так сохраняется полная консистентность.
+ */
+
+import {RangeSetBuilder} from "@codemirror/state";
+import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate,} from "@codemirror/view";
+
+export const CURSOR_BLUR_CLASS = "private-mode-cursor-blur";
+export const HARD_WORD_BODY_CLASS = "private-mode-hard-word";
+export const HARD_CHAR_BODY_CLASS = "private-mode-hard-char";
+export const HARD_WORDS_BODY_CLASS = "private-mode-hard-words";
+// ключ в document.body.dataset — сколько слов у каретки оставлять чёткими (режим words)
+export const WORDS_COUNT_ATTR = "privateModeWordsCount";
+
+type HardMode = "word" | "char" | "words" | null;
+
+function currentHardMode(): HardMode {
+    if (document.body.classList.contains(HARD_WORD_BODY_CLASS)) return "word";
+    if (document.body.classList.contains(HARD_CHAR_BODY_CLASS)) return "char";
+    if (document.body.classList.contains(HARD_WORDS_BODY_CLASS)) return "words";
+    return null;
+}
+
+function buildDecorations(view: EditorView): DecorationSet {
+    const mode = currentHardMode();
+    if (!mode) return Decoration.none;
+
+    const pos = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(pos);
+
+    // диапазон, который остаётся ЧЁТКИМ (не размывается)
+    let revealFrom = pos;
+    let revealTo = pos;
+
+    if (mode === "word") {
+        const word = view.state.wordAt(pos);
+        if (word) {
+            revealFrom = word.from;
+            revealTo = word.to;
+        }
+        // каретка не на слове (пробел/пусто) → revealFrom==revealTo → вся строка размыта
+    } else if (mode === "char") {
+        // char: только символ слева от каретки
+        revealFrom = Math.max(line.from, pos - 1);
+        revealTo = pos;
+    } else {
+        // words: N слов, заканчивая словом у каретки
+        let n = parseInt(document.body.dataset[WORDS_COUNT_ATTR] ?? "");
+        if (isNaN(n) || n < 1) n = 1;
+
+        // токены строки в АБСОЛЮТНЫХ координатах документа
+        const tokens: { from: number; to: number }[] = [];
+        const re = /\S+/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(line.text)) !== null) {
+            tokens.push({from: line.from + m.index, to: line.from + m.index + m[0].length});
+        }
+
+        // anchor: слово, содержащее каретку; иначе — последнее завершённое слово до каретки
+        let anchorIdx = tokens.findIndex((t) => t.from <= pos && pos <= t.to);
+        if (anchorIdx === -1) {
+            for (let i = tokens.length - 1; i >= 0; i--) {
+                if (tokens[i].to <= pos) {
+                    anchorIdx = i;
+                    break;
+                }
+            }
+        }
+
+        if (anchorIdx === -1) {
+            // каретка до первого слова / пустая строка → вся строка размыта
+            revealFrom = line.from;
+            revealTo = line.from;
+        } else {
+            const anchor = tokens[anchorIdx];
+            revealTo = anchor.from <= pos && pos <= anchor.to ? anchor.to : pos;
+            revealFrom = tokens[Math.max(0, anchorIdx - (n - 1))].from;
+        }
+    }
+
+    const builder = new RangeSetBuilder<Decoration>();
+    const blur = Decoration.mark({class: CURSOR_BLUR_CLASS});
+    // размываем куски активной строки ДО и ПОСЛЕ чёткого диапазона
+    if (revealFrom > line.from) {
+        builder.add(line.from, revealFrom, blur);
+    }
+    if (revealTo < line.to) {
+        builder.add(revealTo, line.to, blur);
+    }
+    return builder.finish();
+}
+
+export const cursorRevealExtension = ViewPlugin.fromClass(
+    class {
+        deco: DecorationSet;
+
+        constructor(view: EditorView) {
+            this.deco = buildDecorations(view);
+        }
+
+        // Пересобираем на любой ViewUpdate: buildDecorations дёшев (одна строка),
+        // а это гарантирует реакцию и на смену режима через пустой dispatch.
+        update(update: ViewUpdate) {
+            this.deco = buildDecorations(update.view);
+        }
+    },
+    {
+        decorations: (v) => v.deco,
+    }
+);
