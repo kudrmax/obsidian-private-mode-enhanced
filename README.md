@@ -46,13 +46,15 @@ This is a fork of [markusmo3/obsidian-private-mode](https://github.com/markusmo3
   ```
 
 # Installing
-1. Install [Supercharged Links](https://github.com/mdelobelle/obsidian_supercharged_links) via the Settings Panel "Community Plugins"
-2. Install this fork via [BRAT](https://github.com/TfTHacker/obsidian42-brat): add the beta plugin `kudrmax/obsidian-private-mode-enhanced`. (Or install the original [Private Mode](https://obsidian.md/plugins?id=private-mode) from Community Plugins if you don't need the fork's extras.)
-3. Enable both plugins in the Settings panel "Community Plugins"
-4. Go into the Settings Panel for "Supercharged Links" and make sure the "Enable in tab headers" is turned on. Otherwise the plugin will not blur your #private files in the editor.
-5. (Optional) Adjust the `styles.scss`/`styles.css` to your liking
-   * to compile the scss you can use sass `npm install -g sass` and `sass styles.scss styles.css`
-6. Enable the two plugins in your Obsidian in the Settings panel "Community Plugins"
+This fork is **not** in the Community Plugins store — install it as a beta plugin via BRAT.
+
+1. Install [Supercharged Links](https://github.com/mdelobelle/obsidian_supercharged_links) from the Settings panel "Community Plugins" (required dependency).
+2. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from "Community Plugins" if you don't have it yet.
+3. In BRAT, run "Add beta plugin" and enter `kudrmax/obsidian-private-mode-enhanced`. BRAT installs the plugin and keeps it updated ("Check for updates").
+4. Enable both **Supercharged Links** and **Private Mode Enhanced** in "Community Plugins".
+5. Open the "Supercharged Links" settings and make sure **"Enable in tab headers"** is turned on — otherwise #private files won't be blurred in the editor. If it was already on, toggle it off and on again.
+
+> Prefer the original without the fork's extras? Install [Private Mode](https://obsidian.md/plugins?id=private-mode) straight from Community Plugins.
 
 # Troubleshooting
 * My file content is not hidden!
