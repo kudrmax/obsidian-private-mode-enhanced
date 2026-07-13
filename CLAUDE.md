@@ -30,7 +30,7 @@
 в цикл не входит (заходя в цикл из него, попадаешь на level 1).
 
 `N` для `HardWords` задаётся на вкладке настроек (`PrivateModeSettingTab`, `main.ts`),
-хранится в `settings.hardWordsCount` (персист, дефолт 1). При `N=1` виден ровно один
+хранится в `settings.hardWordsCount` (персист, дефолт 1). При `N=1` видно ровно одно
 слово у каретки. Отдельного `HardWord`-режима больше нет — он слит в `HardWords` (N=1).
 `words` режет строку по пробелам (`\S+`), поэтому `foo.bar` при N=1 остаётся чётким целиком.
 
@@ -100,8 +100,30 @@ obsidian dev:errors                                # проверить конс
    git push origin master --tags
    ```
 3. Workflow соберёт плагин и опубликует релиз с `main.js` / `manifest.json` / `styles.css`.
-4. В Obsidian обновить через BRAT → «Check for updates».
+4. Проверить, что CI **на форке** прошёл и релиз создан (см. ловушку ниже), затем
+   в Obsidian обновить через BRAT → «Check for updates».
 
-> На форке GitHub может замораживать Actions, пока их вручную не включат в UI репо
-> (Settings → Actions), и требовать write-права workflow. Если CI не стартовал на push тега —
-> проверить это. Тег должен быть уникальным (унаследованные от upstream теги уже заняты).
+### Проблемы решаем в корень, не обходим
+
+**Во время релиза (и вообще) нельзя «обходить» сбой — надо найти и устранить причину.**
+Если CI будто не стартовал / релиза нет — это повод диагностировать, а НЕ собирать
+релиз руками локально (`gh release create`, ручной zip и т.п.). Ручная сборка — обход,
+который маскирует настоящую проблему и даёт неповторяемый артефакт.
+
+**Ловушка №1 — `gh` смотрит на upstream, а не на форк.** В репо два remote
+(`origin` = форк `kudrmax/...`, `upstream` = `markusmo3/obsidian-private-mode`). Если
+`gh` default repo стоит на upstream, то `gh run list` / `gh release list` показывают CI
+и релизы **апстрима**, а не форка — легко сделать ложный вывод «CI не запускался».
+Проверить и починить:
+```bash
+gh repo set-default --view                              # должно быть kudrmax/obsidian-private-mode-enhanced
+gh repo set-default kudrmax/obsidian-private-mode-enhanced
+gh run list --limit 5                                    # теперь прогоны ФОРКА
+gh release view <версия> --json tagName,assets           # подтвердить ассеты
+```
+
+**Ловушка №2 — реальная заморозка Actions.** Только если после починки default repo
+прогонов форка действительно нет: GitHub может замораживать Actions на форке, пока их
+вручную не включат в UI (Settings → Actions), и требовать write-права workflow.
+
+Тег должен быть уникальным (унаследованные от upstream теги уже заняты).
