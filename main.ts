@@ -11,7 +11,6 @@ enum Level {
     HidePrivate = "hide-private",
     RevealOnHover = "reveal-on-hover",
     RevealAll = "reveal-all",
-    HardWord = "hard-word",
     HardChar = "hard-char",
     HardWords = "hard-words",
 }
@@ -22,7 +21,6 @@ enum CssClass {
     UnprotectedScreenshare = "private-mode-unprotected-screenshare",
     BlurLinksToo = "private-mode-blur-links-too",
     // должны совпадать с константами в cursor-reveal.ts
-    HardWord = "private-mode-hard-word",
     HardChar = "private-mode-hard-char",
     HardWords = "private-mode-hard-words",
 }
@@ -38,9 +36,9 @@ interface PrivateModePluginSettings {
 const DEFAULT_SETTINGS: PrivateModePluginSettings = {
     currentScreenshareProtection:  true,
     blurLinksToo: true,
-    currentLevel: Level.RevealOnHover,
+    currentLevel: Level.HidePrivate,
     blurEnabled: true,
-    hardWordsCount: 3,
+    hardWordsCount: 1,
 };
 
 export default class PrivateModePlugin extends Plugin {
@@ -59,7 +57,7 @@ export default class PrivateModePlugin extends Plugin {
                 const menu = new Menu();
                 menu.addItem((item) =>
                     item
-                        .setTitle('Reveal all')
+                        .setTitle('Blur level 1 · show all')
                         .setIcon('ph--eye')
                         .setChecked(this.settings.currentLevel == Level.RevealAll)
                         .onClick(() => {
@@ -69,21 +67,41 @@ export default class PrivateModePlugin extends Plugin {
                 );
                 menu.addItem((item) =>
                     item
-                        .setTitle('Reveal on hover')
-                        .setIcon('ph--eye-hand')
-                        .setChecked(this.settings.currentLevel == Level.RevealOnHover)
+                        .setTitle('Blur level 2 · show one line')
+                        .setIcon('ph--eye-closed')
+                        .setChecked(this.settings.currentLevel == Level.HidePrivate)
                         .onClick(() => {
-                            this.settings.currentLevel = Level.RevealOnHover
+                            this.settings.currentLevel = Level.HidePrivate
                             this.updateGlobalRevealStyle();
                         })
                 );
                 menu.addItem((item) =>
                     item
-                        .setTitle('Reveal never')
+                        .setTitle('Blur level 3 · show N words')
                         .setIcon('ph--eye-closed')
-                        .setChecked(this.settings.currentLevel == Level.HidePrivate)
+                        .setChecked(this.settings.currentLevel == Level.HardWords)
                         .onClick(() => {
-                            this.settings.currentLevel = Level.HidePrivate
+                            this.settings.currentLevel = Level.HardWords
+                            this.updateGlobalRevealStyle();
+                        })
+                );
+                menu.addItem((item) =>
+                    item
+                        .setTitle('Blur level 4 · show one character')
+                        .setIcon('ph--eye-closed')
+                        .setChecked(this.settings.currentLevel == Level.HardChar)
+                        .onClick(() => {
+                            this.settings.currentLevel = Level.HardChar
+                            this.updateGlobalRevealStyle();
+                        })
+                );
+                menu.addItem((item) =>
+                    item
+                        .setTitle('Blur level · show on hover')
+                        .setIcon('ph--eye-hand')
+                        .setChecked(this.settings.currentLevel == Level.RevealOnHover)
+                        .onClick(() => {
+                            this.settings.currentLevel = Level.RevealOnHover
                             this.updateGlobalRevealStyle();
                         })
                 );
@@ -131,26 +149,17 @@ export default class PrivateModePlugin extends Plugin {
         addIcon("ph--link", linkIcon);
 
         this.addCommand({
-            id: "hide-private",
-            name: "Hide #private",
+            id: "toggle-blur",
+            name: "Blur on/off",
             callback: () => {
-                this.settings.currentLevel = Level.HidePrivate;
-                this.updateGlobalRevealStyle();
-            },
-        });
-
-        this.addCommand({
-            id: "reveal-on-hover",
-            name: "Reveal #private on hover",
-            callback: () => {
-                this.settings.currentLevel = Level.RevealOnHover;
+                this.settings.blurEnabled = !this.settings.blurEnabled;
                 this.updateGlobalRevealStyle();
             },
         });
 
         this.addCommand({
             id: "reveal-all",
-            name: "Reveal #private always",
+            name: "Blur level 1 · show all",
             callback: () => {
                 this.settings.currentLevel = Level.RevealAll;
                 this.updateGlobalRevealStyle();
@@ -158,26 +167,17 @@ export default class PrivateModePlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "hard-word",
-            name: "Hard blur — reveal word at cursor",
+            id: "hide-private",
+            name: "Blur level 2 · show one line",
             callback: () => {
-                this.settings.currentLevel = Level.HardWord;
-                this.updateGlobalRevealStyle();
-            },
-        });
-
-        this.addCommand({
-            id: "hard-char",
-            name: "Hard blur — reveal last char at cursor",
-            callback: () => {
-                this.settings.currentLevel = Level.HardChar;
+                this.settings.currentLevel = Level.HidePrivate;
                 this.updateGlobalRevealStyle();
             },
         });
 
         this.addCommand({
             id: "hard-words",
-            name: "Hard blur — reveal last N words at cursor",
+            name: "Blur level 3 · show N words",
             callback: () => {
                 this.settings.currentLevel = Level.HardWords;
                 this.updateGlobalRevealStyle();
@@ -185,19 +185,28 @@ export default class PrivateModePlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "cycle-mode",
-            name: "Cycle #private mode",
+            id: "hard-char",
+            name: "Blur level 4 · show one character",
             callback: () => {
-                this.cycleCurrentLevel();
+                this.settings.currentLevel = Level.HardChar;
                 this.updateGlobalRevealStyle();
             },
         });
 
         this.addCommand({
-            id: "toggle-blur",
-            name: "Toggle blur on/off (keep mode)",
+            id: "reveal-on-hover",
+            name: "Blur level · show on hover",
             callback: () => {
-                this.settings.blurEnabled = !this.settings.blurEnabled;
+                this.settings.currentLevel = Level.RevealOnHover;
+                this.updateGlobalRevealStyle();
+            },
+        });
+
+        this.addCommand({
+            id: "cycle-mode",
+            name: "Cycle blur level",
+            callback: () => {
+                this.cycleCurrentLevel();
                 this.updateGlobalRevealStyle();
             },
         });
@@ -219,24 +228,23 @@ export default class PrivateModePlugin extends Plugin {
         });
     }
 
+    // Перебор основной градации по номерам уровней: 1 → 2 → 3 → 4 → 1
+    // (show all → one line → N words → one character). RevealOnHover вне цикла.
     private cycleCurrentLevel() {
         switch (this.settings.currentLevel) {
-            case Level.RevealAll:
-                this.settings.currentLevel = Level.RevealOnHover;
-                break;
-            case Level.RevealOnHover:
+            case Level.RevealAll:       // level 1
                 this.settings.currentLevel = Level.HidePrivate;
                 break;
-            case Level.HidePrivate:
-                this.settings.currentLevel = Level.HardWord;
-                break;
-            case Level.HardWord:
-                this.settings.currentLevel = Level.HardChar;
-                break;
-            case Level.HardChar:
+            case Level.HidePrivate:     // level 2
                 this.settings.currentLevel = Level.HardWords;
                 break;
-            case Level.HardWords:
+            case Level.HardWords:       // level 3
+                this.settings.currentLevel = Level.HardChar;
+                break;
+            case Level.HardChar:        // level 4
+                this.settings.currentLevel = Level.RevealAll;
+                break;
+            default:                    // RevealOnHover или иное — заходим в цикл с level 1
                 this.settings.currentLevel = Level.RevealAll;
                 break;
         }
@@ -272,7 +280,6 @@ export default class PrivateModePlugin extends Plugin {
             CssClass.RevealOnHover,
             CssClass.UnprotectedScreenshare,
             CssClass.BlurLinksToo,
-            CssClass.HardWord,
             CssClass.HardChar,
             CssClass.HardWords
         );
@@ -303,10 +310,6 @@ export default class PrivateModePlugin extends Plugin {
                 document.body.classList.add(CssClass.RevealAll);
                 setIcon(this.statusBarSpan, "ph--eye")
                 break;
-            case Level.HardWord:
-                document.body.classList.add(CssClass.HardWord);
-                setIcon(this.statusBarSpan, "ph--eye-closed")
-                break;
             case Level.HardChar:
                 document.body.classList.add(CssClass.HardChar);
                 setIcon(this.statusBarSpan, "ph--eye-closed")
@@ -330,8 +333,8 @@ class PrivateModeSettingTab extends PluginSettingTab {
         const {containerEl} = this;
         containerEl.empty();
         new Setting(containerEl)
-            .setName("Слов у каретки в режиме Hard words")
-            .setDesc("Сколько последних слов (заканчивая словом у каретки) остаётся чётким.")
+            .setName("Words to keep clear (blur level 3)")
+            .setDesc("How many last words (ending at the word under the cursor) stay sharp. 1 = just the current word.")
             .addSlider((s) =>
                 s
                     .setLimits(1, 15, 1)

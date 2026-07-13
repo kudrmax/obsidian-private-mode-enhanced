@@ -51,7 +51,7 @@ $reveal-templates: (
 /* hard blur: активная строка приватной заметки размыта, кроме слова/буквы у каретки.
  * Гейт приватности — тот же :has-селектор, что и везде; куски строки размечает
  * CM6-расширение классом .private-mode-cursor-blur (см. cursor-reveal.ts). */
-body:is(.private-mode-hard-word, .private-mode-hard-char, .private-mode-hard-words)
+body:is(.private-mode-hard-char, .private-mode-hard-words)
     .workspace-tabs:has(.is-active [data-link-tags*='#private'])
     .cm-active .private-mode-cursor-blur {
     filter: blur(var(--blur-level)) !important;

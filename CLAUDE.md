@@ -13,22 +13,26 @@
 Размывает (`filter: blur()`) весь `#private`-контент. Приватной считается заметка, где
 где-либо есть тег/ссылка `#private` — CSS-гейт `:has(.is-active [data-link-tags*='#private'])`.
 
-Уровни приватности (`enum Level` в `main.ts`):
+Уровни приватности (`enum Level` в `main.ts`). Команды и меню статус-бара названы по
+схеме **«Blur level N»**, где N — сила блюра (1 слабее всего → 4 сильнее всего):
 
-| Уровень | Что видно |
-|---|---|
-| `RevealAll` | всё видно (приватность выкл) |
-| `RevealOnHover` | скрыто, раскрывается по наведению/выделению |
-| `HidePrivate` | скрыто всегда |
-| `HardWord` | скрыто; на активной строке видно **только слово** у каретки |
-| `HardChar` | скрыто; на активной строке видно **только символ** слева от каретки |
-| `HardWords` | скрыто; на активной строке видно **последние N слов**, заканчивая словом у каретки (N — в настройках) |
+| Команда (name) | `enum Level` | Что видно |
+|---|---|---|
+| `Blur level 1 · show all` | `RevealAll` | всё видно (приватность выкл) |
+| `Blur level 2 · show one line` | `HidePrivate` | в live preview видна **вся текущая строка** (активная `.cm-active` не блюрится); в reading view скрыто всё |
+| `Blur level 3 · show N words` | `HardWords` | скрыто; на активной строке видно **последние N слов**, заканчивая словом у каретки (N — в настройках, дефолт 1 → одно слово) |
+| `Blur level 4 · show one character` | `HardChar` | скрыто; на активной строке видно **только символ** слева от каретки |
+| `Blur level · show on hover` | `RevealOnHover` | скрыто, раскрывается по наведению/выделению — **вне цикла** |
+| `Blur on/off` | — | тумблер `blurEnabled`: временно показать всё, не теряя текущий уровень |
 
-Каждый уровень — отдельная команда; `Cycle #private mode` перебирает их по кругу в порядке
-`RevealAll → RevealOnHover → HidePrivate → HardWord → HardChar → HardWords → RevealAll`.
+`Cycle blur level` перебирает **только 4 основных уровня** по кругу:
+`RevealAll(1) → HidePrivate(2) → HardWords(3) → HardChar(4) → RevealAll`. `RevealOnHover`
+в цикл не входит (заходя в цикл из него, попадаешь на level 1).
 
-`N` для `HardWords` задаётся на вкладке настроек плагина (`PrivateModeSettingTab`, `main.ts`),
-хранится в `settings.hardWordsCount` (персист). При `N=1` поведение идентично `HardWord`.
+`N` для `HardWords` задаётся на вкладке настроек (`PrivateModeSettingTab`, `main.ts`),
+хранится в `settings.hardWordsCount` (персист, дефолт 1). При `N=1` виден ровно один
+слово у каретки. Отдельного `HardWord`-режима больше нет — он слит в `HardWords` (N=1).
+`words` режет строку по пробелам (`\S+`), поэтому `foo.bar` при N=1 остаётся чётким целиком.
 
 ## Архитектура
 
@@ -54,13 +58,14 @@
 ### Подводные грабли
 
 - `enum CssClass` — строковый; **computed-значения запрещены** (нельзя `= SOME_CONST`). Только
-  строковые литералы. Значения `HardWord`/`HardChar`/`HardWords` должны совпадать с константами в `cursor-reveal.ts`.
+  строковые литералы. Значения `HardChar`/`HardWords` должны совпадать с константами в `cursor-reveal.ts`.
 - **`N` для `HardWords` передаётся в `cursor-reveal.ts` через `document.body.dataset.privateModeWordsCount`**
   (ключ `WORDS_COUNT_ATTR`), а НЕ импортом настроек — расширение остаётся независимым от `main.ts`,
   как и режимы через body-классы. `main.ts` выставляет атрибут в `setClassToDocumentBody()`.
 - Жёсткие режимы работают только в редакторе (в reading view нет каретки → ведут себя как `HidePrivate`).
-- `currentLevel` **не персистится** между перезапусками (сбрасывается на `RevealOnHover`, `main.ts`).
-  Известный давний недочёт оригинала — если понадобится, чинить отдельно (сохранять в settings).
+- `currentLevel` **персистится**: `updateGlobalRevealStyle()` → `saveSettings()`, а `onload`
+  мержит `loadData()` поверх `DEFAULT_SETTINGS`. Дефолт при первом запуске — `HidePrivate`
+  (level 2). (Прежняя заметка «не персистится» была ошибочной.)
 
 ## Сборка
 

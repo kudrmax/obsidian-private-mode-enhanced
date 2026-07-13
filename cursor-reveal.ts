@@ -2,8 +2,9 @@
  * Private Mode plugin for Obsidian — hard blur cursor-reveal extension
  * Licensed under the MIT License (http://opensource.org/licenses/MIT)
  *
- * В "жёстких" режимах (word / char) активная строка приватной заметки
- * остаётся размытой целиком, кроме слова или последней буквы у каретки.
+ * В "жёстких" режимах (char / words) активная строка приватной заметки
+ * остаётся размытой целиком, кроме последней буквы или N слов у каретки
+ * (N — из настроек, дефолт 1 → одно слово).
  *
  * Расширение НЕ знает, приватна ли заметка: оно лишь размечает куски
  * активной строки классом `private-mode-cursor-blur`. Решение "блюрить или
@@ -15,16 +16,14 @@ import {RangeSetBuilder} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate,} from "@codemirror/view";
 
 export const CURSOR_BLUR_CLASS = "private-mode-cursor-blur";
-export const HARD_WORD_BODY_CLASS = "private-mode-hard-word";
 export const HARD_CHAR_BODY_CLASS = "private-mode-hard-char";
 export const HARD_WORDS_BODY_CLASS = "private-mode-hard-words";
 // ключ в document.body.dataset — сколько слов у каретки оставлять чёткими (режим words)
 export const WORDS_COUNT_ATTR = "privateModeWordsCount";
 
-type HardMode = "word" | "char" | "words" | null;
+type HardMode = "char" | "words" | null;
 
 function currentHardMode(): HardMode {
-    if (document.body.classList.contains(HARD_WORD_BODY_CLASS)) return "word";
     if (document.body.classList.contains(HARD_CHAR_BODY_CLASS)) return "char";
     if (document.body.classList.contains(HARD_WORDS_BODY_CLASS)) return "words";
     return null;
@@ -41,14 +40,7 @@ function buildDecorations(view: EditorView): DecorationSet {
     let revealFrom = pos;
     let revealTo = pos;
 
-    if (mode === "word") {
-        const word = view.state.wordAt(pos);
-        if (word) {
-            revealFrom = word.from;
-            revealTo = word.to;
-        }
-        // каретка не на слове (пробел/пусто) → revealFrom==revealTo → вся строка размыта
-    } else if (mode === "char") {
+    if (mode === "char") {
         // char: только символ слева от каретки
         revealFrom = Math.max(line.from, pos - 1);
         revealTo = pos;
