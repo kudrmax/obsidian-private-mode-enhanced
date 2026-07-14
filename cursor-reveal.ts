@@ -4,7 +4,9 @@
  *
  * В "жёстких" режимах (char / words) активная строка приватной заметки
  * остаётся размытой целиком, кроме последней буквы или N слов у каретки
- * (N — из настроек, дефолт 1 → одно слово).
+ * (N — из настроек, дефолт 1 → одно слово). Слово раскрывается только пока
+ * каретка стоит НА слове (внутри/на границе); пробелы и знаки препинания
+ * разделяют слова, поэтому за разделителем строка размыта целиком.
  *
  * Расширение НЕ знает, приватна ли заметка: оно лишь размечает куски
  * активной строки классом `private-mode-cursor-blur`. Решение "блюрить или
@@ -49,32 +51,27 @@ function buildDecorations(view: EditorView): DecorationSet {
         let n = parseInt(document.body.dataset[WORDS_COUNT_ATTR] ?? "");
         if (isNaN(n) || n < 1) n = 1;
 
-        // токены строки в АБСОЛЮТНЫХ координатах документа
+        // токены строки в АБСОЛЮТНЫХ координатах документа.
+        // Слово = буквы/цифры/подчёркивание (юникод — ловит кириллицу);
+        // пробелы И любые знаки препинания считаются разделителями.
         const tokens: { from: number; to: number }[] = [];
-        const re = /\S+/g;
+        const re = /[\p{L}\p{N}_]+/gu;
         let m: RegExpExecArray | null;
         while ((m = re.exec(line.text)) !== null) {
             tokens.push({from: line.from + m.index, to: line.from + m.index + m[0].length});
         }
 
-        // anchor: слово, содержащее каретку; иначе — последнее завершённое слово до каретки
-        let anchorIdx = tokens.findIndex((t) => t.from <= pos && pos <= t.to);
-        if (anchorIdx === -1) {
-            for (let i = tokens.length - 1; i >= 0; i--) {
-                if (tokens[i].to <= pos) {
-                    anchorIdx = i;
-                    break;
-                }
-            }
-        }
+        // anchor: слово, к которому примыкает каретка (внутри или ровно на границе).
+        // Если каретка на разделителе (пробел / знак препинания / пустая строка) — anchor нет.
+        const anchorIdx = tokens.findIndex((t) => t.from <= pos && pos <= t.to);
 
         if (anchorIdx === -1) {
-            // каретка до первого слова / пустая строка → вся строка размыта
+            // каретка не на слове → вся строка размыта
             revealFrom = line.from;
             revealTo = line.from;
         } else {
             const anchor = tokens[anchorIdx];
-            revealTo = anchor.from <= pos && pos <= anchor.to ? anchor.to : pos;
+            revealTo = anchor.to;                                  // anchor всегда содержит pos
             revealFrom = tokens[Math.max(0, anchorIdx - (n - 1))].from;
         }
     }
