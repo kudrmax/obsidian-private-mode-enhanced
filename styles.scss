@@ -15,13 +15,17 @@ $element-selectors: (
     ".private-mode-blur-links-too" ".nav-file-title:has([data-link-tags*='#private'])" 1, // "Files" tree
     ".private-mode-blur-links-too" ".search-result:has([data-link-tags*='#private'])" 1, // Sidebar search
 
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .inline-title" 1,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .cm-line" 1,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .view-content :is(.metadata-property)" 1,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .view-content :is(img, video, svg, canvas)" 4,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .markdown-preview-view :is(li, p, h1, h2, h3, h4, h5)" 1,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .cm-embed-block" 1,
-    "" ".workspace-tabs:has(.is-active [data-link-tags*='#private']) .internal-embed" 1,
+    // Контент приватной заметки. Гейт — класс .private-mode-private-note, который main.ts
+    // ставит на КАЖДЫЙ приватный .workspace-leaf (по тегам из metadataCache). Раньше здесь
+    // был :has([data-link-tags]) от Supercharged Links — он жил только на активной вкладке,
+    // из-за чего в stacked tabs блюрилась/раскрывалась вся группа разом.
+    "" ".workspace-leaf.private-mode-private-note .inline-title" 1,
+    "" ".workspace-leaf.private-mode-private-note .cm-line" 1,
+    "" ".workspace-leaf.private-mode-private-note .view-content :is(.metadata-property)" 1,
+    "" ".workspace-leaf.private-mode-private-note .view-content :is(img, video, svg, canvas)" 4,
+    "" ".workspace-leaf.private-mode-private-note .markdown-preview-view :is(li, p, h1, h2, h3, h4, h5)" 1,
+    "" ".workspace-leaf.private-mode-private-note .cm-embed-block" 1,
+    "" ".workspace-leaf.private-mode-private-note .internal-embed" 1,
 );
 
 @each $bodySelector, $selector, $m in $element-selectors {
@@ -49,10 +53,11 @@ $reveal-templates: (
 }
 
 /* hard blur: активная строка приватной заметки размыта, кроме слова/буквы у каретки.
- * Гейт приватности — тот же :has-селектор, что и везде; куски строки размечает
- * CM6-расширение классом .private-mode-cursor-blur (см. cursor-reveal.ts). */
+ * Гейт приватности — тот же per-leaf класс .private-mode-private-note (его ставит main.ts
+ * на приватные листья); куски строки размечает CM6-расширение классом
+ * .private-mode-cursor-blur (см. cursor-reveal.ts). */
 body:is(.private-mode-hard-char, .private-mode-hard-words)
-    .workspace-tabs:has(.is-active [data-link-tags*='#private'])
+    .workspace-leaf.private-mode-private-note
     .cm-active .private-mode-cursor-blur {
     filter: blur(var(--blur-level)) !important;
 }

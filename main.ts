@@ -4,8 +4,31 @@
  * Licensed under the MIT License (http://opensource.org/licenses/MIT)
  */
 
-import {addIcon, App, Menu, Platform, Plugin, PluginSettingTab, Setting, setIcon,} from "obsidian";
+import {
+    addIcon,
+    App,
+    getAllTags,
+    MarkdownView,
+    Menu,
+    Platform,
+    Plugin,
+    PluginSettingTab,
+    Setting,
+    setIcon,
+    TFile,
+} from "obsidian";
 import {cursorRevealExtension, WORDS_COUNT_ATTR} from "./cursor-reveal";
+
+// Класс-гейт: main.ts вешает его на .workspace-leaf приватной заметки, CSS блюрит по нему.
+// Приватность определяется по тегам заметки (metadataCache), а не по DOM активной вкладки —
+// поэтому корректно работает в stacked tabs (каждый лист блюрится по своей приватности).
+const PRIVATE_LEAF_CLASS = "private-mode-private-note";
+
+// Заметка приватна, если среди её тегов есть #private (или вложенный #private/...).
+function isPrivateTag(tag: string): boolean {
+    const t = tag.replace(/^#/, "").toLowerCase();
+    return t === "private" || t.startsWith("private/");
+}
 
 enum Level {
     HidePrivate = "hide-private",
@@ -223,6 +246,13 @@ export default class PrivateModePlugin extends Plugin {
         this.registerEditorExtension(cursorRevealExtension);
         this.addSettingTab(new PrivateModeSettingTab(this.app, this));
 
+        // Держим класс .private-mode-private-note в актуальном состоянии: смена/открытие
+        // вкладок, изменение раскладки и правка метаданных (например, добавили тег #private).
+        this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updatePrivateLeaves()));
+        this.registerEvent(this.app.workspace.on("layout-change", () => this.updatePrivateLeaves()));
+        this.registerEvent(this.app.metadataCache.on("changed", () => this.updatePrivateLeaves()));
+        this.registerEvent(this.app.metadataCache.on("resolved", () => this.updatePrivateLeaves()));
+
         this.app.workspace.onLayoutReady(() => {
             this.updateGlobalRevealStyle();
         });
@@ -254,10 +284,31 @@ export default class PrivateModePlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
+    // Приватна ли заметка: есть ли среди её тегов (frontmatter + inline) #private.
+    isFilePrivate(file: TFile): boolean {
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache) return false;
+        const tags = getAllTags(cache);
+        return !!tags && tags.some(isPrivateTag);
+    }
+
+    // Помечаем классом .private-mode-private-note каждый markdown-лист с приватной заметкой.
+    // Так блюр привязан к конкретному листу, а не к активной вкладке группы (фикс stacked tabs).
+    updatePrivateLeaves() {
+        this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+            const file = (leaf.view instanceof MarkdownView) ? leaf.view.file : null;
+            const isPrivate = !!file && this.isFilePrivate(file);
+            // containerEl (сам элемент .workspace-leaf) отсутствует в публичных типах Obsidian
+            const leafEl = (leaf as unknown as { containerEl: HTMLElement }).containerEl;
+            leafEl.classList.toggle(PRIVATE_LEAF_CLASS, isPrivate);
+        });
+    }
+
     updateGlobalRevealStyle() {
         this.saveSettings()
         this.removeAllClasses();
         this.setClassToDocumentBody();
+        this.updatePrivateLeaves();
         this.refreshCursorRevealDecorations();
 
         if (Platform.isDesktopApp) {
