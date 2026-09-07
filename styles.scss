@@ -15,6 +15,10 @@ $element-selectors: (
     ".private-mode-blur-links-too" ".nav-file-title:has([data-link-tags*='#private'])" 1, // "Files" tree
     ".private-mode-blur-links-too" ".search-result:has([data-link-tags*='#private'])" 1, // Sidebar search
 
+    "" ".private-mode-private-always-secondary-render .inline-title" 1,
+    "" ".private-mode-private-always-secondary-render .markdown-embed-title" 1,
+    ".private-mode-blur-links-too" ".private-mode-private-always-secondary-render .search-result-file-title" 1,
+
     // Контент приватной заметки. Гейт — класс .private-mode-private-note, который main.ts
     // ставит на КАЖДЫЙ приватный .workspace-leaf (по тегам из metadataCache). Раньше здесь
     // был :has([data-link-tags]) от Supercharged Links — он жил только на активной вкладке,
@@ -84,6 +88,21 @@ $reveal-templates: (
         body#{$bodyPrefix}#{$bodySelector} #{$selector}#{$suffix} {
             filter: unset !important;
         }
+    }
+}
+
+$private-always-secondary-render-selector: ".private-mode-private-always-secondary-render.private-mode-private-always-secondary-render.private-mode-private-always-secondary-render.private-mode-private-always-secondary-render";
+
+$private-always-secondary-content-selectors: (
+    "#{$private-always-secondary-render-selector} .markdown-preview-sizer > :not(.mod-header, .markdown-preview-pusher)" 1,
+    "#{$private-always-secondary-render-selector} .metadata-property" 1,
+    "#{$private-always-secondary-render-selector} .search-result-file-match" 1,
+    "#{$private-always-secondary-render-selector} :is(.markdown-preview-sizer > :not(.mod-header, .markdown-preview-pusher), .search-result-file-match) :is(img, video, svg, canvas)" 4,
+);
+
+@each $selector, $multiplier in $private-always-secondary-content-selectors {
+    body #{$selector} {
+        filter: blur(calc(var(--blur-level) * #{$multiplier})) !important;
     }
 }
 

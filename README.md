@@ -16,7 +16,7 @@ This is a fork of [markusmo3/obsidian-private-mode](https://github.com/markusmo3
   * **Blur level 3 · show N words**: reveal the last N words ending at the caret; `N` is configurable in the settings tab (default `1` → just the current word).
   * **Blur level 4 · show one character**: reveal only the character to the left of the caret.
 * 🔀 **`Blur on/off`** — a command that switches blurring off and back on **in the same mode**. Unlike *level 1 · show all* (which is itself a mode), toggling remembers whatever mode you were in and restores it.
-* 🔒 **`#private-always`** — every tab starts at *Blur level 4 · show one character*, regardless of the global `#private` state. Blur toggles and level commands affect only the active `#private-always` tab; closing it forgets those temporary changes.
+* 🔒 **`#private-always`** — every tab starts at *Blur level 4 · show one character*, regardless of the global `#private` state. Blur toggles and level commands affect only the active `#private-always` tab; closing it forgets those temporary changes. Its content is always blurred in hover previews, embeds, and indexed excerpts; their titles retain the global `#private` behavior, while a directly opened tab retains its local behavior.
 * 💾 **Persisted state** — the current mode and the on/off state survive an Obsidian restart. (The original always reset to *Reveal on hover* on every start.)
 * ⚙️ **Settings tab** — adds a settings panel (currently: the `N` for *blur level 3*). The original had no settings.
 * 🏷️ **Clear command names** — all commands renamed to a single readable `Blur level N` ladder (1 shows all → 4 shows one character), so the command palette reads as a gradient at a glance.

@@ -35,6 +35,7 @@ import {
     classifyPrivacyTags,
     PrivacyKind,
 } from "./privacy-state";
+import {SecondaryRenderProtection} from "./secondary-render-controller";
 
 enum Level {
     HidePrivate = "hide-private",
@@ -90,6 +91,7 @@ export default class PrivateModePlugin extends Plugin {
     statusBarSpan!: HTMLSpanElement;
     settings!: PrivateModePluginSettings;
     private blurStateController!: BlurStateController<WorkspaceLeaf, Level>;
+    private secondaryRenderProtection!: SecondaryRenderProtection;
 
     async onload() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -251,6 +253,12 @@ export default class PrivateModePlugin extends Plugin {
 
         this.registerEditorExtension(cursorRevealExtension);
         this.addSettingTab(new PrivateModeSettingTab(this.app, this));
+        this.secondaryRenderProtection = this.addChild(
+            new SecondaryRenderProtection(this.app, (file) => this.getFilePrivacyKind(file)),
+        );
+        this.registerMarkdownPostProcessor((el, context) => {
+            this.secondaryRenderProtection.protectMarkdownRender(el, context.sourcePath);
+        });
 
         this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateWorkspaceRevealStyle()));
         this.registerEvent(this.app.workspace.on("file-open", () => this.updateWorkspaceRevealStyle()));
@@ -370,6 +378,7 @@ export default class PrivateModePlugin extends Plugin {
 
     private updateWorkspaceRevealStyle(): void {
         this.updatePrivateLeaves();
+        this.secondaryRenderProtection.refresh();
         this.updateStatusBarIcon();
         this.refreshCursorRevealDecorations();
     }
