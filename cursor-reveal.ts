@@ -16,23 +16,19 @@
 
 import {RangeSetBuilder} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate,} from "@codemirror/view";
+import {resolveHardMode} from "./cursor-mode";
 
 export const CURSOR_BLUR_CLASS = "private-mode-cursor-blur";
-export const HARD_CHAR_BODY_CLASS = "private-mode-hard-char";
-export const HARD_WORDS_BODY_CLASS = "private-mode-hard-words";
 // ключ в document.body.dataset — сколько слов у каретки оставлять чёткими (режим words)
 export const WORDS_COUNT_ATTR = "privateModeWordsCount";
 
-type HardMode = "char" | "words" | null;
-
-function currentHardMode(): HardMode {
-    if (document.body.classList.contains(HARD_CHAR_BODY_CLASS)) return "char";
-    if (document.body.classList.contains(HARD_WORDS_BODY_CLASS)) return "words";
-    return null;
+function currentHardMode(view: EditorView) {
+    const leaf = view.dom.closest(".workspace-leaf");
+    return resolveHardMode(document.body.classList, leaf?.classList ?? null);
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
-    const mode = currentHardMode();
+    const mode = currentHardMode(view);
     if (!mode) return Decoration.none;
 
     const pos = view.state.selection.main.head;

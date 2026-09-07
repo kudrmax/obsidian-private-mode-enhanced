@@ -1,9 +1,10 @@
 {
     "name": "obsidian-private-mode-enhanced",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Simple #private mode for Obsidian (https://obsidian.md)",
     "main": "main.js",
     "scripts": {
+        "test": "tsx --test *.test.ts",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && sass styles.scss styles.css",
         "make-release": "npm run build && bash ./.github/make_release.sh private-mode-enhanced",
         "preview": "npm run make-release && bash -c \"cp -r private-mode-enhanced/. private-mode-testvault/.obsidian/plugins/private-mode-enhanced/\" && start \"\" \"obsidian://open?vault=private-mode-testvault\"",
@@ -27,6 +28,7 @@
         "prettier": "3.3.3",
         "sass": "^1.80.1",
         "tslib": "2.4.0",
+        "tsx": "^4.23.13",
         "typescript": "4.7.4"
     }
 }

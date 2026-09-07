@@ -11,10 +11,14 @@
 ## Что делает плагин
 
 Размывает (`filter: blur()`) весь `#private`-контент. Приватной считается заметка, у которой
-среди тегов (frontmatter или inline) есть `#private` (или вложенный `#private/...`).
+среди тегов (frontmatter или inline) есть `#private` (или вложенный `#private/...`). Тег
+`#private-always` (и `#private-always/...`) включает усиленный режим: каждая вкладка открывается
+с включённым `HardChar`, а изменения блюра и уровня живут только до закрытия этой вкладки.
 Приватность определяет **`main.ts`**: он читает теги через Obsidian API `getAllTags` и вешает
 класс `private-mode-private-note` на **каждый приватный `.workspace-leaf`** (один лист = одна
 заметка). CSS блюрит по этому классу (`.workspace-leaf.private-mode-private-note …`).
+Для `#private-always` дополнительно ставятся класс типа и локальный класс режима. Две вкладки
+одной заметки независимы; глобальные команды и сохранённые настройки `#private` на них не влияют.
 
 Гейт **per-leaf**, а не per-tab-group и не зависит от активной вкладки — поэтому корректно
 работает в режиме наложенных вкладок (stacked tabs): каждый лист блюрится по своей приватности.
@@ -39,6 +43,11 @@ Links — это другой механизм (`.private-mode-blur-links-too �
 | `Blur level · show on hover` | `RevealOnHover` | скрыто, раскрывается по наведению/выделению — **вне цикла** |
 | `Blur on/off` | — | тумблер `blurEnabled`: временно показать всё, не теряя текущий уровень |
 
+Если активна вкладка `#private-always`, все команды уровней, `Cycle blur level`, `Blur on/off`
+и управление через статус-бар меняют только временное состояние этой вкладки. При закрытии
+или переходе вкладки на другой файл состояние забывается. Повторное открытие начинается с
+`blurEnabled = true` и `HardChar`, даже если глобально выбран `RevealAll` или блюр выключен.
+
 `Cycle blur level` перебирает **только 4 основных уровня** по кругу:
 `RevealAll(1) → HidePrivate(2) → HardWords(3) → HardChar(4) → RevealAll`. `RevealOnHover`
 в цикл не входит (заходя в цикл из него, попадаешь на level 1).
@@ -55,10 +64,15 @@ Links — это другой механизм (`.private-mode-blur-links-too �
 
 - **`styles.scss`** — базовый механизм. `#private`-элементы блюрятся; `$reveal-templates`
   снимают блюр под конкретные body-классы. Активная строка `.cm-active` разблюрена всегда
-  (`"" ".cm-active"`) — это и есть «дыра», которую закрывают жёсткие режимы.
+  (`"" ".cm-active"`) — это и есть «дыра», которую закрывают жёсткие режимы. В reading view
+  блюрятся все содержательные top-level блоки `.markdown-preview-sizer`, включая code/table/h6.
+  Private-callout внутри `#private-always` управляется локальным классом leaf, а не `body`.
 - **`cursor-reveal.ts`** — CM6 `ViewPlugin` для жёстких режимов. Размечает куски активной
-  строки классом `private-mode-cursor-blur` (всё, кроме слова/буквы у каретки).
-- **`main.ts`** — уровни, команды, body-классы, статус-бар, регистрация расширения.
+  строки классом `private-mode-cursor-blur` (всё, кроме слова/буквы у каретки); режим берётся
+  с текущего leaf для `#private-always`, иначе с `body`.
+- **`privacy-state.ts`** — классификация тегов и неперсистентное per-leaf состояние.
+- **`cursor-mode.ts`** — CSS-классы leaf и разрешение глобального/локального hard mode.
+- **`main.ts`** — уровни, команды, body/leaf-классы, статус-бар, регистрация расширения.
 
 ### Два неочевидных решения (не сломать при рефакторинге)
 
@@ -72,22 +86,25 @@ Links — это другой механизм (`.private-mode-blur-links-too �
    классу. **Почему не CSS-`:has`:** единственный DOM-сигнал приватности (`data-link-tags`)
    даёт Supercharged Links и только на активной вкладке — в stacked tabs этого не хватает
    (см. «Что делает плагин»). Поэтому детект вынесен в JS через `metadataCache`. Класс
-   обновляется по событиям `active-leaf-change` / `layout-change` / `metadataCache.changed|resolved`.
+   обновляется по событиям `active-leaf-change` / `file-open` / `layout-change` /
+   `metadataCache.changed|resolved`.
 3. **`ViewPlugin` не видит смену body-класса** (реагирует только на CM-транзакции). После смены
-   уровня `updateGlobalRevealStyle()` вызывает `refreshCursorRevealDecorations()` — пустой
-   `dispatch({})` во все markdown-редакторы форсит пересбор декораций.
+   уровня `updateGlobalRevealStyle()` вызывает `refreshCursorRevealDecorations()` — публичный
+   `editor.transaction({})` во всех markdown-редакторах форсит пересбор декораций.
 
 ### Подводные грабли
 
 - `enum CssClass` — строковый; **computed-значения запрещены** (нельзя `= SOME_CONST`). Только
-  строковые литералы. Значения `HardChar`/`HardWords` должны совпадать с константами в `cursor-reveal.ts`.
+  строковые литералы. Значения `HardChar`/`HardWords` должны совпадать с константами в `cursor-mode.ts`.
 - **`N` для `HardWords` передаётся в `cursor-reveal.ts` через `document.body.dataset.privateModeWordsCount`**
   (ключ `WORDS_COUNT_ATTR`), а НЕ импортом настроек — расширение остаётся независимым от `main.ts`,
-  как и режимы через body-классы. `main.ts` выставляет атрибут в `setClassToDocumentBody()`.
+  как и режимы через CSS-классы. `main.ts` выставляет атрибут в `setClassToDocumentBody()` всегда,
+  потому что локальный `HardWords` может быть активен при любом глобальном уровне.
 - Жёсткие режимы работают только в редакторе (в reading view нет каретки → ведут себя как `HidePrivate`).
 - `currentLevel` **персистится**: `updateGlobalRevealStyle()` → `saveSettings()`, а `onload`
   мержит `loadData()` поверх `DEFAULT_SETTINGS`. Дефолт при первом запуске — `HidePrivate`
-  (level 2). (Прежняя заметка «не персистится» была ошибочной.)
+  (level 2). Локальные состояния `#private-always` принципиально не попадают в `data.json`.
+  (Прежняя заметка «не персистится» была ошибочной.)
 
 ## Сборка
 

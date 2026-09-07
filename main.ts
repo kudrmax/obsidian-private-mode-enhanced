@@ -16,19 +16,25 @@ import {
     Setting,
     setIcon,
     TFile,
+    WorkspaceLeaf,
 } from "obsidian";
 import {cursorRevealExtension, WORDS_COUNT_ATTR} from "./cursor-reveal";
-
-// Класс-гейт: main.ts вешает его на .workspace-leaf приватной заметки, CSS блюрит по нему.
-// Приватность определяется по тегам заметки (metadataCache), а не по DOM активной вкладки —
-// поэтому корректно работает в stacked tabs (каждый лист блюрится по своей приватности).
-const PRIVATE_LEAF_CLASS = "private-mode-private-note";
-
-// Заметка приватна, если среди её тегов есть #private (или вложенный #private/...).
-function isPrivateTag(tag: string): boolean {
-    const t = tag.replace(/^#/, "").toLowerCase();
-    return t === "private" || t.startsWith("private/");
-}
+import {
+    PRIVATE_ALWAYS_HARD_CHAR_CLASS,
+    PRIVATE_ALWAYS_HARD_WORDS_CLASS,
+    PRIVATE_ALWAYS_LEAF_CLASS,
+    PRIVATE_ALWAYS_REVEAL_ALL_CLASS,
+    PRIVATE_ALWAYS_REVEAL_ON_HOVER_CLASS,
+    PRIVATE_LEAF_CLASS,
+    privateAlwaysClassForState,
+} from "./cursor-mode";
+import {
+    BlurState,
+    BlurStateController,
+    BlurTarget,
+    classifyPrivacyTags,
+    PrivacyKind,
+} from "./privacy-state";
 
 enum Level {
     HidePrivate = "hide-private",
@@ -38,12 +44,27 @@ enum Level {
     HardWords = "hard-words",
 }
 
+function nextLevel(level: Level): Level {
+    switch (level) {
+        case Level.RevealAll:
+            return Level.HidePrivate;
+        case Level.HidePrivate:
+            return Level.HardWords;
+        case Level.HardWords:
+            return Level.HardChar;
+        case Level.HardChar:
+            return Level.RevealAll;
+        default:
+            return Level.RevealAll;
+    }
+}
+
 enum CssClass {
     RevealAll = "private-mode-reveal-all",
     RevealOnHover = "private-mode-reveal-on-hover",
     UnprotectedScreenshare = "private-mode-unprotected-screenshare",
     BlurLinksToo = "private-mode-blur-links-too",
-    // должны совпадать с константами в cursor-reveal.ts
+    // должны совпадать с константами в cursor-mode.ts
     HardChar = "private-mode-hard-char",
     HardWords = "private-mode-hard-words",
 }
@@ -65,68 +86,75 @@ const DEFAULT_SETTINGS: PrivateModePluginSettings = {
 };
 
 export default class PrivateModePlugin extends Plugin {
-    statusBar: HTMLElement;
-    statusBarSpan: HTMLSpanElement;
-    settings: PrivateModePluginSettings;
+    statusBar!: HTMLElement;
+    statusBarSpan!: HTMLSpanElement;
+    settings!: PrivateModePluginSettings;
+    private blurStateController!: BlurStateController<WorkspaceLeaf, Level>;
 
     async onload() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        const thisSettings = this.settings;
+        const globalState: BlurState<Level> = {
+            get blurEnabled() {
+                return thisSettings.blurEnabled;
+            },
+            set blurEnabled(value: boolean) {
+                thisSettings.blurEnabled = value;
+            },
+            get level() {
+                return thisSettings.currentLevel;
+            },
+            set level(value: Level) {
+                thisSettings.currentLevel = value;
+            },
+        };
+        this.blurStateController = new BlurStateController(
+            globalState,
+            Level.HardChar,
+            nextLevel,
+        );
         this.statusBar = this.addStatusBarItem();
         this.statusBar.addClass("mod-clickable")
         this.statusBar.ariaLabel = "Toggle private mode"
         this.statusBar.setAttr("data-tooltip-position", "top")
         this.statusBar.onClickEvent((event) => {
             if (event.button != 0) {
+                const currentState = this.getActiveBlurState();
                 const menu = new Menu();
                 menu.addItem((item) =>
                     item
                         .setTitle('Blur level 1 · show all')
                         .setIcon('ph--eye')
-                        .setChecked(this.settings.currentLevel == Level.RevealAll)
-                        .onClick(() => {
-                            this.settings.currentLevel = Level.RevealAll
-                            this.updateGlobalRevealStyle();
-                        })
+                        .setChecked(currentState.level == Level.RevealAll)
+                        .onClick(() => this.setCurrentLevel(Level.RevealAll))
                 );
                 menu.addItem((item) =>
                     item
                         .setTitle('Blur level 2 · show one line')
                         .setIcon('ph--eye-closed')
-                        .setChecked(this.settings.currentLevel == Level.HidePrivate)
-                        .onClick(() => {
-                            this.settings.currentLevel = Level.HidePrivate
-                            this.updateGlobalRevealStyle();
-                        })
+                        .setChecked(currentState.level == Level.HidePrivate)
+                        .onClick(() => this.setCurrentLevel(Level.HidePrivate))
                 );
                 menu.addItem((item) =>
                     item
                         .setTitle('Blur level 3 · show N words')
                         .setIcon('ph--eye-closed')
-                        .setChecked(this.settings.currentLevel == Level.HardWords)
-                        .onClick(() => {
-                            this.settings.currentLevel = Level.HardWords
-                            this.updateGlobalRevealStyle();
-                        })
+                        .setChecked(currentState.level == Level.HardWords)
+                        .onClick(() => this.setCurrentLevel(Level.HardWords))
                 );
                 menu.addItem((item) =>
                     item
                         .setTitle('Blur level 4 · show one character')
                         .setIcon('ph--eye-closed')
-                        .setChecked(this.settings.currentLevel == Level.HardChar)
-                        .onClick(() => {
-                            this.settings.currentLevel = Level.HardChar
-                            this.updateGlobalRevealStyle();
-                        })
+                        .setChecked(currentState.level == Level.HardChar)
+                        .onClick(() => this.setCurrentLevel(Level.HardChar))
                 );
                 menu.addItem((item) =>
                     item
                         .setTitle('Blur level · show on hover')
                         .setIcon('ph--eye-hand')
-                        .setChecked(this.settings.currentLevel == Level.RevealOnHover)
-                        .onClick(() => {
-                            this.settings.currentLevel = Level.RevealOnHover
-                            this.updateGlobalRevealStyle();
-                        })
+                        .setChecked(currentState.level == Level.RevealOnHover)
+                        .onClick(() => this.setCurrentLevel(Level.RevealOnHover))
                 );
                 menu.addSeparator()
                 menu.addItem((item) =>
@@ -136,7 +164,7 @@ export default class PrivateModePlugin extends Plugin {
                         .setChecked(this.settings.blurLinksToo)
                         .onClick(() => {
                             this.settings.blurLinksToo = !this.settings.blurLinksToo;
-                            item.setChecked(!this.settings.blurLinksToo)
+                            item.setChecked(this.settings.blurLinksToo)
                             this.updateGlobalRevealStyle();
                         })
                 );
@@ -159,7 +187,6 @@ export default class PrivateModePlugin extends Plugin {
                     this.updateGlobalRevealStyle();
                 } else {
                     this.cycleCurrentLevel();
-                    this.updateGlobalRevealStyle();
                 }
             }
         });
@@ -174,64 +201,43 @@ export default class PrivateModePlugin extends Plugin {
         this.addCommand({
             id: "toggle-blur",
             name: "Blur on/off",
-            callback: () => {
-                this.settings.blurEnabled = !this.settings.blurEnabled;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.toggleBlur(),
         });
 
         this.addCommand({
             id: "reveal-all",
             name: "Blur level 1 · show all",
-            callback: () => {
-                this.settings.currentLevel = Level.RevealAll;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.setCurrentLevel(Level.RevealAll),
         });
 
         this.addCommand({
             id: "hide-private",
             name: "Blur level 2 · show one line",
-            callback: () => {
-                this.settings.currentLevel = Level.HidePrivate;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.setCurrentLevel(Level.HidePrivate),
         });
 
         this.addCommand({
             id: "hard-words",
             name: "Blur level 3 · show N words",
-            callback: () => {
-                this.settings.currentLevel = Level.HardWords;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.setCurrentLevel(Level.HardWords),
         });
 
         this.addCommand({
             id: "hard-char",
             name: "Blur level 4 · show one character",
-            callback: () => {
-                this.settings.currentLevel = Level.HardChar;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.setCurrentLevel(Level.HardChar),
         });
 
         this.addCommand({
             id: "reveal-on-hover",
             name: "Blur level · show on hover",
-            callback: () => {
-                this.settings.currentLevel = Level.RevealOnHover;
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.setCurrentLevel(Level.RevealOnHover),
         });
 
         this.addCommand({
             id: "cycle-mode",
             name: "Cycle blur level",
-            callback: () => {
-                this.cycleCurrentLevel();
-                this.updateGlobalRevealStyle();
-            },
+            callback: () => this.cycleCurrentLevel(),
         });
 
         this.addCommand({
@@ -246,82 +252,135 @@ export default class PrivateModePlugin extends Plugin {
         this.registerEditorExtension(cursorRevealExtension);
         this.addSettingTab(new PrivateModeSettingTab(this.app, this));
 
-        // Держим класс .private-mode-private-note в актуальном состоянии: смена/открытие
-        // вкладок, изменение раскладки и правка метаданных (например, добавили тег #private).
-        this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updatePrivateLeaves()));
-        this.registerEvent(this.app.workspace.on("layout-change", () => this.updatePrivateLeaves()));
-        this.registerEvent(this.app.metadataCache.on("changed", () => this.updatePrivateLeaves()));
-        this.registerEvent(this.app.metadataCache.on("resolved", () => this.updatePrivateLeaves()));
+        this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateWorkspaceRevealStyle()));
+        this.registerEvent(this.app.workspace.on("file-open", () => this.updateWorkspaceRevealStyle()));
+        this.registerEvent(this.app.workspace.on("layout-change", () => this.updateWorkspaceRevealStyle()));
+        this.registerEvent(this.app.metadataCache.on("changed", () => this.updateWorkspaceRevealStyle()));
+        this.registerEvent(this.app.metadataCache.on("resolved", () => this.updateWorkspaceRevealStyle()));
 
         this.app.workspace.onLayoutReady(() => {
             this.updateGlobalRevealStyle();
         });
     }
 
-    // Перебор основной градации по номерам уровней: 1 → 2 → 3 → 4 → 1
-    // (show all → one line → N words → one character). RevealOnHover вне цикла.
-    private cycleCurrentLevel() {
-        switch (this.settings.currentLevel) {
-            case Level.RevealAll:       // level 1
-                this.settings.currentLevel = Level.HidePrivate;
-                break;
-            case Level.HidePrivate:     // level 2
-                this.settings.currentLevel = Level.HardWords;
-                break;
-            case Level.HardWords:       // level 3
-                this.settings.currentLevel = Level.HardChar;
-                break;
-            case Level.HardChar:        // level 4
-                this.settings.currentLevel = Level.RevealAll;
-                break;
-            default:                    // RevealOnHover или иное — заходим в цикл с level 1
-                this.settings.currentLevel = Level.RevealAll;
-                break;
+    private getActiveBlurTarget(): BlurTarget<WorkspaceLeaf> {
+        const leaf = this.app.workspace.activeLeaf;
+        if (!(leaf?.view instanceof MarkdownView) || !leaf.view.file) {
+            return {kind: "global"};
         }
+        if (this.getFilePrivacyKind(leaf.view.file) !== "private-always") {
+            return {kind: "global"};
+        }
+        return {
+            kind: "private-always",
+            leaf,
+            filePath: leaf.view.file.path,
+        };
+    }
+
+    private getActiveBlurState(): Readonly<BlurState<Level>> {
+        return this.blurStateController.getState(this.getActiveBlurTarget());
+    }
+
+    private toggleBlur(): void {
+        const target = this.getActiveBlurTarget();
+        this.blurStateController.toggleBlur(target);
+        this.updateAfterBlurStateChange(target);
+    }
+
+    private setCurrentLevel(level: Level): void {
+        const target = this.getActiveBlurTarget();
+        this.blurStateController.setLevel(target, level);
+        this.updateAfterBlurStateChange(target);
+    }
+
+    private cycleCurrentLevel(): void {
+        const target = this.getActiveBlurTarget();
+        this.blurStateController.cycleLevel(target);
+        this.updateAfterBlurStateChange(target);
+    }
+
+    private updateAfterBlurStateChange(target: BlurTarget<WorkspaceLeaf>): void {
+        if (target.kind === "global") {
+            this.updateGlobalRevealStyle();
+            return;
+        }
+        this.updateWorkspaceRevealStyle();
     }
 
     async saveSettings() {
         await this.saveData(this.settings);
     }
 
-    // Приватна ли заметка: есть ли среди её тегов (frontmatter + inline) #private.
-    isFilePrivate(file: TFile): boolean {
+    getFilePrivacyKind(file: TFile): PrivacyKind {
         const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache) return false;
-        const tags = getAllTags(cache);
-        return !!tags && tags.some(isPrivateTag);
+        if (!cache) return "public";
+        return classifyPrivacyTags(getAllTags(cache) ?? []);
     }
 
-    // Помечаем классом .private-mode-private-note каждый markdown-лист с приватной заметкой.
-    // Так блюр привязан к конкретному листу, а не к активной вкладке группы (фикс stacked tabs).
-    updatePrivateLeaves() {
+    updatePrivateLeaves(): void {
         this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
             const file = (leaf.view instanceof MarkdownView) ? leaf.view.file : null;
-            const isPrivate = !!file && this.isFilePrivate(file);
-            // containerEl (сам элемент .workspace-leaf) отсутствует в публичных типах Obsidian
-            const leafEl = (leaf as unknown as { containerEl: HTMLElement }).containerEl;
-            leafEl.classList.toggle(PRIVATE_LEAF_CLASS, isPrivate);
+            const privacyKind = file ? this.getFilePrivacyKind(file) : "public";
+            const leafEl = leaf.view.containerEl.closest<HTMLElement>(".workspace-leaf");
+            if (!leafEl) {
+                this.blurStateController.resetLeaf(leaf);
+                return;
+            }
+            leafEl.classList.toggle(PRIVATE_LEAF_CLASS, privacyKind !== "public");
+            leafEl.classList.toggle(PRIVATE_ALWAYS_LEAF_CLASS, privacyKind === "private-always");
+            leafEl.removeClass(
+                PRIVATE_ALWAYS_REVEAL_ALL_CLASS,
+                PRIVATE_ALWAYS_REVEAL_ON_HOVER_CLASS,
+                PRIVATE_ALWAYS_HARD_CHAR_CLASS,
+                PRIVATE_ALWAYS_HARD_WORDS_CLASS,
+            );
+
+            if (privacyKind !== "private-always" || !file) {
+                this.blurStateController.resetLeaf(leaf);
+                return;
+            }
+
+            const state = this.blurStateController.getState({
+                kind: "private-always",
+                leaf,
+                filePath: file.path,
+            });
+            this.setPrivateAlwaysLeafClass(leafEl, state);
         });
     }
 
-    updateGlobalRevealStyle() {
-        this.saveSettings()
+    private setPrivateAlwaysLeafClass(leafEl: HTMLElement, state: Readonly<BlurState<Level>>): void {
+        const modeClass = privateAlwaysClassForState(state);
+        if (modeClass) {
+            leafEl.addClass(modeClass);
+        }
+    }
+
+    updateGlobalRevealStyle(): void {
+        void this.saveSettings();
         this.removeAllClasses();
         this.setClassToDocumentBody();
-        this.updatePrivateLeaves();
-        this.refreshCursorRevealDecorations();
+        this.updateWorkspaceRevealStyle();
 
         if (Platform.isDesktopApp) {
             window.require("electron").remote.getCurrentWindow().setContentProtection(this.settings.currentScreenshareProtection)
         }
     }
 
+    private updateWorkspaceRevealStyle(): void {
+        this.updatePrivateLeaves();
+        this.updateStatusBarIcon();
+        this.refreshCursorRevealDecorations();
+    }
+
     // ViewPlugin реагирует на CM-транзакции, а не на смену body-класса.
     // Форсим пересбор декораций пустым dispatch во все markdown-редакторы.
-    refreshCursorRevealDecorations() {
+    refreshCursorRevealDecorations(): void {
         this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
-            const cm = (leaf.view as any)?.editor?.cm;
-            cm?.dispatch({});
+            if (leaf.view instanceof MarkdownView) {
+                leaf.view.editor.transaction({});
+            }
         });
     }
 
@@ -337,6 +396,7 @@ export default class PrivateModePlugin extends Plugin {
     }
 
     setClassToDocumentBody() {
+        document.body.dataset[WORDS_COUNT_ATTR] = String(this.settings.hardWordsCount);
         if (!this.settings.currentScreenshareProtection) {
             document.body.classList.add(CssClass.UnprotectedScreenshare)
         }
@@ -344,33 +404,38 @@ export default class PrivateModePlugin extends Plugin {
             document.body.classList.add(CssClass.BlurLinksToo)
         }
         if (!this.settings.blurEnabled) {
-            // блюр выключен — показываем всё, сохранённый режим не теряется
             document.body.classList.add(CssClass.RevealAll);
-            setIcon(this.statusBarSpan, "ph--eye")
             return;
         }
         switch (this.settings.currentLevel) {
             case Level.HidePrivate:
-                setIcon(this.statusBarSpan, "ph--eye-closed")
                 break;
             case Level.RevealOnHover:
                 document.body.classList.add(CssClass.RevealOnHover);
-                setIcon(this.statusBarSpan, "ph--eye-hand")
                 break;
             case Level.RevealAll:
                 document.body.classList.add(CssClass.RevealAll);
-                setIcon(this.statusBarSpan, "ph--eye")
                 break;
             case Level.HardChar:
                 document.body.classList.add(CssClass.HardChar);
-                setIcon(this.statusBarSpan, "ph--eye-closed")
                 break;
             case Level.HardWords:
                 document.body.classList.add(CssClass.HardWords);
-                document.body.dataset[WORDS_COUNT_ATTR] = String(this.settings.hardWordsCount);
-                setIcon(this.statusBarSpan, "ph--eye-closed")
                 break;
         }
+    }
+
+    private updateStatusBarIcon(): void {
+        const state = this.getActiveBlurState();
+        if (!state.blurEnabled || state.level === Level.RevealAll) {
+            setIcon(this.statusBarSpan, "ph--eye");
+            return;
+        }
+        if (state.level === Level.RevealOnHover) {
+            setIcon(this.statusBarSpan, "ph--eye-hand");
+            return;
+        }
+        setIcon(this.statusBarSpan, "ph--eye-closed");
     }
 
 }

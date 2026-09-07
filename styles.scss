@@ -19,18 +19,53 @@ $element-selectors: (
     // ставит на КАЖДЫЙ приватный .workspace-leaf (по тегам из metadataCache). Раньше здесь
     // был :has([data-link-tags]) от Supercharged Links — он жил только на активной вкладке,
     // из-за чего в stacked tabs блюрилась/раскрывалась вся группа разом.
-    "" ".workspace-leaf.private-mode-private-note .inline-title" 1,
-    "" ".workspace-leaf.private-mode-private-note .cm-line" 1,
-    "" ".workspace-leaf.private-mode-private-note .view-content :is(.metadata-property)" 1,
-    "" ".workspace-leaf.private-mode-private-note .view-content :is(img, video, svg, canvas)" 4,
-    "" ".workspace-leaf.private-mode-private-note .markdown-preview-view :is(li, p, h1, h2, h3, h4, h5)" 1,
-    "" ".workspace-leaf.private-mode-private-note .cm-embed-block" 1,
-    "" ".workspace-leaf.private-mode-private-note .internal-embed" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .inline-title" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .cm-line" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .view-content :is(.metadata-property)" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .view-content :is(img, video, svg, canvas)" 4,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .markdown-preview-sizer > :not(.mod-header, .markdown-preview-pusher)" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .cm-embed-block" 1,
+    "" ".workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note) .internal-embed" 1,
 );
 
 @each $bodySelector, $selector, $m in $element-selectors {
     body#{$bodySelector} #{$selector} {
         filter: blur(calc(var(--blur-level) * #{$m}));
+    }
+}
+
+$private-always-element-selectors: (
+    ".inline-title" 1,
+    ".cm-line" 1,
+    ".view-content :is(.metadata-property)" 1,
+    ".view-content :is(img, video, svg, canvas)" 4,
+    ".markdown-preview-sizer > :not(.mod-header, .markdown-preview-pusher)" 1,
+    ".cm-embed-block" 1,
+    ".internal-embed" 1,
+    ".embedded-backlinks .search-result-container" 1,
+);
+
+@each $selector, $m in $private-always-element-selectors {
+    body .workspace-leaf.private-mode-private-always-note #{$selector} {
+        filter: blur(calc(var(--blur-level) * #{$m}));
+    }
+}
+
+$private-always-reveal-templates: (
+    "" ".inline-title:focus-within",
+    "" ".cm-active",
+    ".private-mode-always-reveal-on-hover" ".is-selected",
+    ".private-mode-always-reveal-on-hover" ".has-focus",
+    ".private-mode-always-reveal-on-hover" ":has(.has-focus)",
+    ".private-mode-always-reveal-on-hover" ":hover",
+    ".private-mode-always-reveal-all" ""
+);
+
+@each $selector, $m in $private-always-element-selectors {
+    @each $leafMode, $suffix in $private-always-reveal-templates {
+        body .workspace-leaf.private-mode-private-always-note#{$leafMode} #{$selector}#{$suffix} {
+            filter: unset !important;
+        }
     }
 }
 
@@ -57,8 +92,15 @@ $reveal-templates: (
  * на приватные листья); куски строки размечает CM6-расширение классом
  * .private-mode-cursor-blur (см. cursor-reveal.ts). */
 body:is(.private-mode-hard-char, .private-mode-hard-words)
-    .workspace-leaf.private-mode-private-note
+    .workspace-leaf.private-mode-private-note:not(.private-mode-private-always-note)
     .cm-active .private-mode-cursor-blur {
+    filter: blur(var(--blur-level)) !important;
+}
+
+body .workspace-leaf.private-mode-private-always-note:is(
+    .private-mode-always-hard-char,
+    .private-mode-always-hard-words
+) .cm-active .private-mode-cursor-blur {
     filter: blur(var(--blur-level)) !important;
 }
 
@@ -67,10 +109,27 @@ body:is(.private-mode-hard-char, .private-mode-hard-words)
     --callout-color: 158, 158, 158;
     --callout-icon: lucide-lock;
 }
-body:not(.private-mode-reveal-all) .callout[data-callout="private"]:not(.is-collapsed) > .callout-content {
+body:not(.private-mode-reveal-all) .callout[data-callout="private"]:not(
+    .is-collapsed,
+    .workspace-leaf.private-mode-private-always-note .callout
+) > .callout-content {
     filter: blur(0.5rem);
 }
-body.private-mode-reveal-on-hover .callout[data-callout="private"]:not(.is-collapsed) > .callout-content:hover {
+body.private-mode-reveal-on-hover .callout[data-callout="private"]:not(
+    .is-collapsed,
+    .workspace-leaf.private-mode-private-always-note .callout
+) > .callout-content:hover {
+    filter: none;
+}
+
+body .workspace-leaf.private-mode-private-always-note
+    .callout[data-callout="private"]:not(.is-collapsed) > .callout-content {
+    filter: blur(0.5rem);
+}
+body .workspace-leaf.private-mode-private-always-note.private-mode-always-reveal-on-hover
+    .callout[data-callout="private"]:not(.is-collapsed) > .callout-content:hover,
+body .workspace-leaf.private-mode-private-always-note.private-mode-always-reveal-all
+    .callout[data-callout="private"]:not(.is-collapsed) > .callout-content {
     filter: none;
 }
 
