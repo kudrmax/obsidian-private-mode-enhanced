@@ -101,8 +101,33 @@ $private-always-secondary-content-selectors: (
 );
 
 @each $selector, $multiplier in $private-always-secondary-content-selectors {
-    body #{$selector} {
+    body:not(.private-mode-always-paused) #{$selector} {
         filter: blur(calc(var(--blur-level) * #{$multiplier})) !important;
+    }
+
+    body.private-mode-always-paused #{$selector} {
+        filter: none !important;
+    }
+}
+
+$private-always-link-selector: ":is([data-link-tags~='#private-always' i], [data-link-tags*='#private-always/' i])";
+$ordinary-private-link-selector: "[data-link-tags*='#private' i]:not(#{$private-always-link-selector})";
+$private-always-paused-title-selectors: (
+    ".data-link-text#{$private-always-link-selector}",
+    ".dataview tr:has(a#{$private-always-link-selector}):not(:has(a#{$ordinary-private-link-selector}))",
+    ".suggestion-item:has(#{$private-always-link-selector}):not(:has(#{$ordinary-private-link-selector}))",
+    ".nav-file-title:has(#{$private-always-link-selector}):not(:has(#{$ordinary-private-link-selector}))",
+    ".search-result:has(#{$private-always-link-selector}):not(:has(#{$ordinary-private-link-selector}))",
+    "#{$private-always-secondary-render-selector}",
+    "#{$private-always-secondary-render-selector} .inline-title",
+    "#{$private-always-secondary-render-selector} .markdown-embed-title",
+    "#{$private-always-secondary-render-selector} .search-result-file-title",
+    "#{$private-always-secondary-render-selector} .callout[data-callout='private'] > .callout-content",
+);
+
+@each $selector in $private-always-paused-title-selectors {
+    body.private-mode-always-paused #{$selector} {
+        filter: none !important;
     }
 }
 

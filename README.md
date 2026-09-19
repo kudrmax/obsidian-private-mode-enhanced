@@ -1,5 +1,5 @@
 # Private Mode Enhanced
-Simple #private mode for [Obsidian](https://obsidian.md/). Notes tagged with `#private` follow the global blur mode. Notes tagged with `#private-always` always open blurred at level 4 and can only be revealed temporarily in their active tab.
+Simple #private mode for [Obsidian](https://obsidian.md/). Notes tagged with `#private` follow the global blur mode. Notes tagged with `#private-always` open blurred at level 4, with per-tab controls and an optional timed pause for all of them.
 
 > **This is a fork** of [markusmo3/obsidian-private-mode](https://github.com/markusmo3/obsidian-private-mode) with extra "hard blur" modes, an on/off toggle and persisted state. See [What's different from the original](#whats-different-from-the-original) below. Installed via [BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
@@ -18,7 +18,8 @@ This is a fork of [markusmo3/obsidian-private-mode](https://github.com/markusmo3
 * 🔀 **`Blur on/off`** — a command that switches blurring off and back on **in the same mode**. Unlike *level 1 · show all* (which is itself a mode), toggling remembers whatever mode you were in and restores it.
 * 🔒 **`#private-always`** — every tab starts at *Blur level 4 · show one character*, regardless of the global `#private` state. Blur toggles and level commands affect only the active `#private-always` tab; closing it forgets those temporary changes. Its content is always blurred in hover previews, embeds, and indexed excerpts; their titles retain the global `#private` behavior, while a directly opened tab retains its local behavior.
 * 💾 **Persisted state** — the current mode and the on/off state survive an Obsidian restart. (The original always reset to *Reveal on hover* on every start.)
-* ⚙️ **Settings tab** — adds a settings panel (currently: the `N` for *blur level 3*). The original had no settings.
+* ⏱️ **`Pause private-always blur`** — temporarily reveal all `#private-always` notes, including newly opened tabs, previews, embeds, excerpts, and link titles. Configure the duration in settings (positive whole minutes, default **60**). Repeating the command restarts the timer; changing the setting applies to the next pause. At expiry, all open `#private-always` tabs reset to level 4 and secondary content is blurred again. Restarting Obsidian or reloading the plugin ends the pause. The timer is never saved or synced. Local blur commands have no effect during the pause; ordinary `#private` controls continue working independently.
+* ⚙️ **Settings tab** — configure the `N` for *blur level 3* and the private-always pause duration. The original had no settings.
 * 🏷️ **Clear command names** — all commands renamed to a single readable `Blur level N` ladder (1 shows all → 4 shows one character), so the command palette reads as a gradient at a glance.
 
 # Features

@@ -10,6 +10,7 @@ import {
     getAllTags,
     MarkdownView,
     Menu,
+    Notice,
     Platform,
     Plugin,
     PluginSettingTab,
@@ -36,6 +37,13 @@ import {
     PrivacyKind,
 } from "./privacy-state";
 import {SecondaryRenderProtection} from "./secondary-render-controller";
+import {
+    DEFAULT_PRIVATE_ALWAYS_PAUSE_MINUTES,
+    isValidPauseMinutes,
+    PrivacyPause,
+} from "./privacy-pause";
+
+const PRIVATE_ALWAYS_PAUSED_CLASS = "private-mode-always-paused";
 
 enum Level {
     HidePrivate = "hide-private",
@@ -76,6 +84,7 @@ interface PrivateModePluginSettings {
     currentLevel: Level;
     blurEnabled: boolean;
     hardWordsCount: number;
+    privateAlwaysPauseMinutes: number;
 }
 
 const DEFAULT_SETTINGS: PrivateModePluginSettings = {
@@ -84,6 +93,7 @@ const DEFAULT_SETTINGS: PrivateModePluginSettings = {
     currentLevel: Level.HidePrivate,
     blurEnabled: true,
     hardWordsCount: 1,
+    privateAlwaysPauseMinutes: DEFAULT_PRIVATE_ALWAYS_PAUSE_MINUTES,
 };
 
 export default class PrivateModePlugin extends Plugin {
@@ -92,9 +102,13 @@ export default class PrivateModePlugin extends Plugin {
     settings!: PrivateModePluginSettings;
     private blurStateController!: BlurStateController<WorkspaceLeaf, Level>;
     private secondaryRenderProtection!: SecondaryRenderProtection;
+    private privacyPause!: PrivacyPause;
 
     async onload() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        if (!isValidPauseMinutes(this.settings.privateAlwaysPauseMinutes)) {
+            this.settings.privateAlwaysPauseMinutes = DEFAULT_PRIVATE_ALWAYS_PAUSE_MINUTES;
+        }
         const thisSettings = this.settings;
         const globalState: BlurState<Level> = {
             get blurEnabled() {
@@ -115,6 +129,21 @@ export default class PrivateModePlugin extends Plugin {
             Level.HardChar,
             nextLevel,
         );
+        this.privacyPause = new PrivacyPause({
+            now: () => Date.now(),
+            schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+            cancel: (handle) => window.clearTimeout(handle),
+        }, () => {
+            this.blurStateController.setPrivateAlwaysPaused(false);
+            this.updateWorkspaceRevealStyle();
+            new Notice("Private-always blur is back on.");
+        });
+        this.register(() => {
+            this.privacyPause.dispose();
+            document.body.classList.remove(PRIVATE_ALWAYS_PAUSED_CLASS);
+        });
+        this.registerDomEvent(window, "focus", () => this.privacyPause.checkExpiration());
+        this.registerDomEvent(document, "visibilitychange", () => this.privacyPause.checkExpiration());
         this.statusBar = this.addStatusBarItem();
         this.statusBar.addClass("mod-clickable")
         this.statusBar.ariaLabel = "Toggle private mode"
@@ -204,6 +233,17 @@ export default class PrivateModePlugin extends Plugin {
             id: "toggle-blur",
             name: "Blur on/off",
             callback: () => this.toggleBlur(),
+        });
+
+        this.addCommand({
+            id: "pause-private-always",
+            name: "Pause private-always blur",
+            callback: () => {
+                this.privacyPause.start(this.settings.privateAlwaysPauseMinutes);
+                this.blurStateController.setPrivateAlwaysPaused(true);
+                this.updateWorkspaceRevealStyle();
+                new Notice(`Private-always blur paused for ${this.settings.privateAlwaysPauseMinutes} minutes.`);
+            },
         });
 
         this.addCommand({
@@ -377,6 +417,8 @@ export default class PrivateModePlugin extends Plugin {
     }
 
     private updateWorkspaceRevealStyle(): void {
+        this.privacyPause.checkExpiration();
+        document.body.classList.toggle(PRIVATE_ALWAYS_PAUSED_CLASS, this.privacyPause.expiresAt !== null);
         this.updatePrivateLeaves();
         this.secondaryRenderProtection.refresh();
         this.updateStatusBarIcon();
@@ -435,6 +477,9 @@ export default class PrivateModePlugin extends Plugin {
     }
 
     private updateStatusBarIcon(): void {
+        this.statusBar.ariaLabel = this.privacyPause.expiresAt === null
+            ? "Toggle private mode"
+            : `Private-always blur paused until ${new Date(this.privacyPause.expiresAt).toLocaleTimeString()}`;
         const state = this.getActiveBlurState();
         if (!state.blurEnabled || state.level === Level.RevealAll) {
             setIcon(this.statusBarSpan, "ph--eye");
@@ -457,6 +502,24 @@ class PrivateModeSettingTab extends PluginSettingTab {
     display(): void {
         const {containerEl} = this;
         containerEl.empty();
+        new Setting(containerEl)
+            .setName("Private-always pause duration (minutes)")
+            .setDesc("Used by Pause private-always blur. Default: 60 minutes. Running it again restarts the timer; restarting Obsidian ends the pause.")
+            .addText((text) => {
+                text.inputEl.type = "number";
+                text.inputEl.min = "1";
+                text.inputEl.step = "1";
+                text.setValue(String(this.plugin.settings.privateAlwaysPauseMinutes))
+                    .onChange(async (value) => {
+                        const minutes = Number(value);
+                        const valid = isValidPauseMinutes(minutes);
+                        text.inputEl.setCustomValidity(valid ? "" : "Enter a positive whole number of minutes.");
+                        text.inputEl.reportValidity();
+                        if (!valid) return;
+                        this.plugin.settings.privateAlwaysPauseMinutes = minutes;
+                        await this.plugin.saveSettings();
+                    });
+            });
         new Setting(containerEl)
             .setName("Words to keep clear (blur level 3)")
             .setDesc("How many last words (ending at the word under the cursor) stay sharp. 1 = just the current word.")
