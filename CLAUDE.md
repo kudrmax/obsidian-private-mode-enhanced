@@ -1,7 +1,7 @@
 # CLAUDE.md — obsidian-private-mode-enhanced
 
 Форк плагина Obsidian **Private Mode** (`markusmo3/obsidian-private-mode`), доработанный под себя.
-Ставится в Obsidian через **BRAT** (beta-плагин), обновляется тоже через BRAT.
+Ставится в Obsidian через **BRAT** (beta-плагин) как `kudrmax/obsidian-private-mode-enhanced`. Релиз и установку в `~/Obsidian` делает агент, а не Макс, — по общему `~/.claude/CLAUDE.md`, раздел «Свои плагины Obsidian».
 
 - **origin** (мой форк): `https://github.com/kudrmax/obsidian-private-mode-enhanced`
 - **upstream** (оригинал): `https://github.com/markusmo3/obsidian-private-mode`
@@ -133,15 +133,9 @@ npm run build        # tsc -noEmit + esbuild (production) + sass styles.scss sty
 `main.js` и `styles.css` — артефакты сборки, в git **не коммитятся** (см. `.gitignore`),
 только прикладываются к GitHub-релизу.
 
-### Локальный тест без релиза
+### Проверка ветки
 
-```bash
-DST=~/Obsidian/.obsidian/plugins/private-mode-enhanced
-cp main.js styles.css manifest.json "$DST/"
-obsidian plugin:disable id=private-mode-enhanced
-obsidian plugin:enable  id=private-mode-enhanced   # перечитать плагин
-obsidian dev:errors                                # проверить консоль
-```
+Ветку проверять только в отдельном тестовом Obsidian со своим профилем и тестовым vault, никогда в `~/Obsidian`: это рабочий vault Макса, он синкается на телефон. Туда попадают только релизы (см. «Релиз»).
 
 ## Релиз (воспроизводимый, через GitHub Actions)
 
@@ -156,8 +150,10 @@ obsidian dev:errors                                # проверить конс
    git push origin master --tags
    ```
 3. Workflow соберёт плагин и опубликует релиз с `main.js` / `manifest.json` / `styles.css`.
-4. Проверить, что CI **на форке** прошёл и релиз создан (см. ловушку ниже), затем
-   в Obsidian обновить через BRAT → «Check for updates».
+4. Проверить, что CI **на форке** прошёл и релиз создан (см. ловушку ниже).
+5. Самому поставить релиз в `~/Obsidian` через Obsidian CLI: обновить плагин через BRAT,
+   перезагрузить его, проверить версию через `obsidian eval` и что Sync выгрузил файлы.
+   Макс ничего не ставит.
 
 ### Проблемы решаем в корень, не обходим
 
